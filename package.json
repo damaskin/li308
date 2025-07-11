@@ -1,0 +1,18 @@
+{
+  "name": "li308",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start:backend": "node backend/index.js",
+    "tunnel": "ssh -p 443 -R0:localhost:4300 -o StrictHostKeyChecking=no 7EOtxQgWhbp@a.pinggy.io"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.10.0",
+    "dotenv": "^17.1.0",
+    "express": "^5.1.0"
+  }
+}
