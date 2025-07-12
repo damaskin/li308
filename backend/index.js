@@ -6,6 +6,9 @@ const PORT = process.env.PORT || 4300;
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+app.get('/', (req, res) => {
+  res.send('Hello World!')
+})
 app.post('/webhook/order', (req, res) => {
   // Здесь будет обработка заказа и отправка в МойСклад
   console.log('Получен заказ:', req.body);
