@@ -14,6 +14,13 @@ app.get('/', (req, res) => {
 const MOYSKLAD_TOKEN = '69469f40e487322489f25eb9ae6346592241e614';
 const MOYSKLAD_API = 'https://api.moysklad.ru/api/remap/1.2';
 
+// Функция для формата даты МойСклад
+function getMoyskladDate() {
+  const d = new Date();
+  const pad = n => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 app.post('/webhook/order', async (req, res) => {
   console.log('📩 Headers:', req.headers);
   console.log('📦 Body:', req.body);
@@ -153,7 +160,7 @@ app.post('/webhook/order', async (req, res) => {
         agent: { meta: counterparty.meta },
         positions,
         description: `Заказ с лендинга. Город: ${order['Город'] || ''}, Адрес: ${order['Улица_дом_квартира'] || ''}`,
-        deliveryPlannedMoment: new Date().toISOString(),
+        deliveryPlannedMoment: getMoyskladDate(),
       },
       {
         headers: {
