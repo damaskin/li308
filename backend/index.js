@@ -10,10 +10,11 @@ app.get('/', (req, res) => {
   res.send('Hello World!')
 })
 app.post('/webhook/order', (req, res) => {
-  // Здесь будет обработка заказа и отправка в МойСклад
-  console.log('Получен заказ:', req.body);
+  console.log('📩 Headers:', req.headers);
+  console.log('📦 Body:', req.body);
   res.status(200).json({ status: 'ok' });
 });
+
 
 app.get('/test', (req, res) => {
   res.status(200).json({ message: 'Сервер работает' });
@@ -21,4 +22,4 @@ app.get('/test', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Backend запущен на порту ${PORT}`);
-}); 
+});
