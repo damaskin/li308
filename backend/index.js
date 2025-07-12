@@ -116,13 +116,40 @@ app.post('/webhook/order', async (req, res) => {
     }
   }
 
-  // 3. Создаем заказ покупателя
+  // 3. Получаем организацию
+  let organization;
+  try {
+    console.log('🔎 Получаю организацию из МойСклад...');
+    const orgResp = await axios.get(
+      `${MOYSKLAD_API}/entity/organization`,
+      {
+        headers: {
+          Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json;charset=utf-8',
+        },
+      }
+    );
+    if (orgResp.data.rows && orgResp.data.rows.length > 0) {
+      console.log('Список организаций:', orgResp.data.rows.map(o => ({ name: o.name, id: o.id, href: o.meta.href })));
+      organization = orgResp.data.rows[0];
+      console.log('✅ Организация найдена:', organization.name);
+    } else {
+      console.error('❌ Не найдено ни одной организации в МойСклад!');
+      return res.status(500).json({ status: 'error', error: 'organization' });
+    }
+  } catch (e) {
+    console.error('❌ Ошибка при получении организации:', e.response?.data || e.message);
+    return res.status(500).json({ status: 'error', error: 'organization' });
+  }
+
+  // 4. Создаем заказ покупателя
   try {
     console.log('📝 Создаю заказ покупателя в МойСклад...');
     await axios.post(
       `${MOYSKLAD_API}/entity/customerorder`,
       {
-        organization: { meta: { href: `${MOYSKLAD_API}/entity/organization`, type: 'organization', mediaType: 'application/json' } },
+        organization: { meta: organization.meta },
         agent: { meta: counterparty.meta },
         positions,
         description: `Заказ с лендинга. Город: ${order['Город'] || ''}, Адрес: ${order['Улица_дом_квартира'] || ''}`,
