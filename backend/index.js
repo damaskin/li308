@@ -12,6 +12,10 @@ app.post('/webhook/order', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+app.get('/test', (req, res) => {
+  res.status(200).json({ message: 'Сервер работает' });
+});
+
 app.listen(PORT, () => {
   console.log(`Backend запущен на порту ${PORT}`);
 }); 
