@@ -1,0 +1,27 @@
+name: Deploy to Server
+
+on:
+  workflow_dispatch:  # запуск вручную
+  push:
+    branches:
+      - main           # или ваша ветка
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo (not used directly but required for context)
+        uses: actions/checkout@v4
+
+      - name: Connect to server and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd ${{ secrets.APP_PATH }}
+            git pull
+            docker compose up -d --build
