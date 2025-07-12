@@ -31,7 +31,7 @@ app.post('/webhook/order', async (req, res) => {
         headers: {
           Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
           'Content-Type': 'application/json',
-          Accept: 'application/json',
+          Accept: 'application/json;charset=utf-8',
         },
       }
     );
@@ -51,7 +51,7 @@ app.post('/webhook/order', async (req, res) => {
           headers: {
             Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
             'Content-Type': 'application/json',
-            Accept: 'application/json',
+            Accept: 'application/json;charset=utf-8',
           },
         }
       );
@@ -77,7 +77,7 @@ app.post('/webhook/order', async (req, res) => {
             headers: {
               Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
               'Content-Type': 'application/json',
-              Accept: 'application/json',
+              Accept: 'application/json;charset=utf-8',
             },
           }
         );
@@ -97,7 +97,7 @@ app.post('/webhook/order', async (req, res) => {
               headers: {
                 Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
                 'Content-Type': 'application/json',
-                Accept: 'application/json',
+                Accept: 'application/json;charset=utf-8',
               },
             }
           );
@@ -132,7 +132,7 @@ app.post('/webhook/order', async (req, res) => {
         headers: {
           Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
           'Content-Type': 'application/json',
-          Accept: 'application/json',
+          Accept: 'application/json;charset=utf-8',
         },
       }
     );
