@@ -42,6 +42,28 @@ async function getPhoneAttributeMeta() {
   }
 }
 
+// Получение всех атрибутов для заказов
+async function getOrderAttributesMeta() {
+  try {
+    const resp = await axios.get(
+      `${MOYSKLAD_API}/entity/customerorder/metadata/attributes`,
+      {
+        headers: {
+          Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json;charset=utf-8',
+        },
+      }
+    );
+    console.error('✅ Массив всех атрибутов:', resp.data.rows);
+    // Вернём массив всех атрибутов
+    return resp.data.rows;
+  } catch (e) {
+    console.error('❌ Не удалось получить мета всех атрибутов заказа:', e.response?.data || e.message);
+    return [];
+  }
+}
+
 app.post('/webhook/order', async (req, res) => {
   try {
     console.log('📩 Headers:', req.headers);
@@ -180,34 +202,53 @@ app.post('/webhook/order', async (req, res) => {
     // 4. Создаем заказ покупателя
     try {
       console.log('📝 Создаю заказ покупателя в МойСклад...');
-      const phoneAttributeMeta = await getPhoneAttributeMeta();
+      const allAttributes = await getOrderAttributesMeta();
       const orderData = {
         organization: { meta: organization.meta },
         agent: { meta: counterparty.meta },
         positions,
-        description: `Заказ с лендинга. Город: ${order['Город'] || ''}, Адрес: ${order['Улица_дом_квартира'] || ''}`,
+        description: `Заказ с лендинга. Город: ${order['Город'] || order.city || ''}, Адрес: ${order['Улица_дом_квартира'] || order.address || ''}`,
         deliveryPlannedMoment: getMoyskladDate(),
       };
-      if (phoneAttributeMeta) {
-        let phoneValue = phone;
-        if (phoneAttributeMeta.type === 'long') {
-          // Оставляем только цифры
-          phoneValue = String(phone).replace(/\D/g, '');
-          if (!phoneValue) phoneValue = '0';
+      // Маппинг: название поля в заказе => название атрибута в МойСклад
+      const fieldToAttribute = {
+        Phone: 'Номер телефона',
+        address: 'Адрес доставки',
+        'Доставка': 'Способ доставки',
+        Email: 'Email',
+        'Почтовый_индекс': 'Почтовый индекс',
+        payment_link: 'Ссылка на оплату',
+        // Добавь сюда другие нужные поля и их соответствие
+      };
+      // Собираем значения для атрибутов
+      const attributes = [];
+      for (const [orderField, attrName] of Object.entries(fieldToAttribute)) {
+        const attrMeta = allAttributes.find(a => a.name === attrName);
+        let value = order[orderField];
+        // Для вложенных полей (например, ссылка на оплату)
+        if (!value && order.payment && orderField.startsWith('payment_')) {
+          value = order.payment[orderField.replace('payment_', '')];
         }
-        orderData.attributes = [
-          {
+        if (attrMeta && value) {
+          let attrValue = value;
+          if (attrMeta.type === 'long') {
+            attrValue = String(value).replace(/\D/g, '');
+            if (!attrValue) attrValue = '0';
+            attrValue = Number(attrValue);
+          }
+          attributes.push({
             meta: {
-              href: `${MOYSKLAD_API}/entity/customerorder/metadata/attributes/${phoneAttributeMeta.id}`,
+              href: `${MOYSKLAD_API}/entity/customerorder/metadata/attributes/${attrMeta.id}`,
               type: 'attributemetadata',
               mediaType: 'application/json',
             },
-            value: phoneAttributeMeta.type === 'long' ? Number(phoneValue) : phoneValue,
-          },
-        ];
-        console.log(`Добавлен атрибут "Номер телефона" (${phoneAttributeMeta.type}) в заказ:`, phoneValue);
-      } else {
-        console.warn('⚠️ Не найден id атрибута "Номер телефона" для заказа.');
+            value: attrValue,
+          });
+          console.log(`Добавлен атрибут "${attrName}" (${attrMeta.type}) в заказ:`, attrValue);
+        }
+      }
+      if (attributes.length > 0) {
+        orderData.attributes = attributes;
       }
       console.log('Данные для создания заказа:', orderData);
       await axios.post(
