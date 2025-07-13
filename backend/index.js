@@ -21,6 +21,27 @@ function getMoyskladDate() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+// Получение id атрибута "Номер телефона" для заказов
+async function getPhoneAttributeId() {
+  try {
+    const resp = await axios.get(
+      `${MOYSKLAD_API}/entity/customerorder/metadata/attributes`,
+      {
+        headers: {
+          Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json;charset=utf-8',
+        },
+      }
+    );
+    const attr = resp.data.rows.find(a => a.name === 'Номер телефона');
+    return attr ? attr.id : null;
+  } catch (e) {
+    console.error('❌ Не удалось получить id атрибута "Номер телефона":', e.response?.data || e.message);
+    return null;
+  }
+}
+
 app.post('/webhook/order', async (req, res) => {
   try {
     console.log('📩 Headers:', req.headers);
@@ -159,6 +180,7 @@ app.post('/webhook/order', async (req, res) => {
     // 4. Создаем заказ покупателя
     try {
       console.log('📝 Создаю заказ покупателя в МойСклад...');
+      const phoneAttributeId = await getPhoneAttributeId();
       const orderData = {
         organization: { meta: organization.meta },
         agent: { meta: counterparty.meta },
@@ -166,6 +188,21 @@ app.post('/webhook/order', async (req, res) => {
         description: `Заказ с лендинга. Город: ${order['Город'] || ''}, Адрес: ${order['Улица_дом_квартира'] || ''}`,
         deliveryPlannedMoment: getMoyskladDate(),
       };
+      if (phoneAttributeId) {
+        orderData.attributes = [
+          {
+            meta: {
+              href: `${MOYSKLAD_API}/entity/customerorder/metadata/attributes/${phoneAttributeId}`,
+              type: 'attributemetadata',
+              mediaType: 'application/json',
+            },
+            value: phone,
+          },
+        ];
+        console.log('Добавлен атрибут "Номер телефона" в заказ:', phone);
+      } else {
+        console.warn('⚠️ Не найден id атрибута "Номер телефона" для заказа.');
+      }
       console.log('Данные для создания заказа:', orderData);
       await axios.post(
         `${MOYSKLAD_API}/entity/customerorder`,
