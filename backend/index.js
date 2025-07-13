@@ -21,8 +21,8 @@ function getMoyskladDate() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-// Получение id атрибута "Номер телефона" для заказов
-async function getPhoneAttributeId() {
+// Получение id и типа атрибута "Номер телефона" для заказов
+async function getPhoneAttributeMeta() {
   try {
     const resp = await axios.get(
       `${MOYSKLAD_API}/entity/customerorder/metadata/attributes`,
@@ -35,9 +35,9 @@ async function getPhoneAttributeId() {
       }
     );
     const attr = resp.data.rows.find(a => a.name === 'Номер телефона');
-    return attr ? attr.id : null;
+    return attr ? { id: attr.id, type: attr.type } : null;
   } catch (e) {
-    console.error('❌ Не удалось получить id атрибута "Номер телефона":', e.response?.data || e.message);
+    console.error('❌ Не удалось получить мета атрибута "Номер телефона":', e.response?.data || e.message);
     return null;
   }
 }
@@ -180,7 +180,7 @@ app.post('/webhook/order', async (req, res) => {
     // 4. Создаем заказ покупателя
     try {
       console.log('📝 Создаю заказ покупателя в МойСклад...');
-      const phoneAttributeId = await getPhoneAttributeId();
+      const phoneAttributeMeta = await getPhoneAttributeMeta();
       const orderData = {
         organization: { meta: organization.meta },
         agent: { meta: counterparty.meta },
@@ -188,18 +188,24 @@ app.post('/webhook/order', async (req, res) => {
         description: `Заказ с лендинга. Город: ${order['Город'] || ''}, Адрес: ${order['Улица_дом_квартира'] || ''}`,
         deliveryPlannedMoment: getMoyskladDate(),
       };
-      if (phoneAttributeId) {
+      if (phoneAttributeMeta) {
+        let phoneValue = phone;
+        if (phoneAttributeMeta.type === 'long') {
+          // Оставляем только цифры
+          phoneValue = String(phone).replace(/\D/g, '');
+          if (!phoneValue) phoneValue = '0';
+        }
         orderData.attributes = [
           {
             meta: {
-              href: `${MOYSKLAD_API}/entity/customerorder/metadata/attributes/${phoneAttributeId}`,
+              href: `${MOYSKLAD_API}/entity/customerorder/metadata/attributes/${phoneAttributeMeta.id}`,
               type: 'attributemetadata',
               mediaType: 'application/json',
             },
-            value: phone,
+            value: phoneAttributeMeta.type === 'long' ? Number(phoneValue) : phoneValue,
           },
         ];
-        console.log('Добавлен атрибут "Номер телефона" в заказ:', phone);
+        console.log(`Добавлен атрибут "Номер телефона" (${phoneAttributeMeta.type}) в заказ:`, phoneValue);
       } else {
         console.warn('⚠️ Не найден id атрибута "Номер телефона" для заказа.');
       }
