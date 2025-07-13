@@ -22,38 +22,24 @@ function getMoyskladDate() {
 }
 
 app.post('/webhook/order', async (req, res) => {
-  console.log('📩 Headers:', req.headers);
-  console.log('📦 Body:', req.body);
-
-  const order = req.body;
-
-  // 1. Создаем/ищем контрагента
-  let counterparty;
   try {
-    const searchQuery = order.Email ? `?search=${encodeURIComponent(order.Email)}` : '';
-    console.log('🔎 Ищу контрагента в МойСклад...');
-    const findResp = await axios.get(
-      `${MOYSKLAD_API}/entity/counterparty${searchQuery}`,
-      {
-        headers: {
-          Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json;charset=utf-8',
-        },
-      }
-    );
-    if (findResp.data.rows && findResp.data.rows.length > 0) {
-      counterparty = findResp.data.rows[0];
-      console.log('✅ Контрагент найден:', counterparty.name);
-    } else {
-      console.log('➕ Контрагент не найден, создаю нового...');
-      const createResp = await axios.post(
-        `${MOYSKLAD_API}/entity/counterparty`,
-        {
-          name: order.Name || order.Email || order.Phone,
-          email: order.Email,
-          phone: order.Phone,
-        },
+    console.log('📩 Headers:', req.headers);
+    console.log('📦 Body:', req.body);
+
+    const order = req.body;
+
+    // 1. Создаем/ищем контрагента
+    let counterparty;
+    const phone = order.Phone || order['Телефон'] || '';
+    if (!phone) {
+      console.error('❌ Не передан номер телефона!');
+      return res.status(200).json({ status: 'error', error: 'phone_required' });
+    }
+    try {
+      const searchQuery = order.Email ? `?search=${encodeURIComponent(order.Email)}` : '';
+      console.log('🔎 Ищу контрагента в МойСклад...');
+      const findResp = await axios.get(
+        `${MOYSKLAD_API}/entity/counterparty${searchQuery}`,
         {
           headers: {
             Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
@@ -62,24 +48,18 @@ app.post('/webhook/order', async (req, res) => {
           },
         }
       );
-      counterparty = createResp.data;
-      console.log('✅ Контрагент создан:', counterparty.name);
-    }
-  } catch (e) {
-    console.error('❌ Ошибка при работе с контрагентом:', e.response?.data || e.message);
-    return res.status(500).json({ status: 'error', error: 'counterparty' });
-  }
-
-  // 2. Формируем массив позиций заказа
-  const positions = [];
-  if (order.payment && Array.isArray(order.payment.products)) {
-    for (const p of order.payment.products) {
-      // Поиск товара по имени
-      let product;
-      try {
-        console.log(`🔎 Ищу товар "${p.name}" в МойСклад...`);
-        const findProduct = await axios.get(
-          `${MOYSKLAD_API}/entity/product?search=${encodeURIComponent(p.name)}`,
+      if (findResp.data.rows && findResp.data.rows.length > 0) {
+        counterparty = findResp.data.rows[0];
+        console.log('✅ Контрагент найден:', counterparty.name);
+      } else {
+        console.log('➕ Контрагент не найден, создаю нового...');
+        const createResp = await axios.post(
+          `${MOYSKLAD_API}/entity/counterparty`,
+          {
+            name: order.Name || order.Email || phone,
+            email: order.Email,
+            phone: phone,
+          },
           {
             headers: {
               Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
@@ -88,18 +68,24 @@ app.post('/webhook/order', async (req, res) => {
             },
           }
         );
-        if (findProduct.data.rows && findProduct.data.rows.length > 0) {
-          product = findProduct.data.rows[0];
-          console.log('✅ Товар найден:', product.name);
-        } else {
-          console.log('➕ Товар не найден, создаю новый...');
-          const createProduct = await axios.post(
-            `${MOYSKLAD_API}/entity/product`,
-            {
-              name: p.name,
-              code: p.sku || undefined,
-              salePrices: [{ value: Number(p.price) * 100, currency: { meta: { href: `${MOYSKLAD_API}/entity/currency/00000000-0000-0000-0000-000000000000`, type: 'currency', mediaType: 'application/json' } } }],
-            },
+        counterparty = createResp.data;
+        console.log('✅ Контрагент создан:', counterparty.name);
+      }
+    } catch (e) {
+      console.error('❌ Ошибка при работе с контрагентом:', e.response?.data || e.message);
+      return res.status(200).json({ status: 'error', error: 'counterparty', details: e.response?.data });
+    }
+
+    // 2. Формируем массив позиций заказа
+    const positions = [];
+    if (order.payment && Array.isArray(order.payment.products)) {
+      for (const p of order.payment.products) {
+        // Поиск товара по имени
+        let product;
+        try {
+          console.log(`🔎 Ищу товар "${p.name}" в МойСклад...`);
+          const findProduct = await axios.get(
+            `${MOYSKLAD_API}/entity/product?search=${encodeURIComponent(p.name)}`,
             {
               headers: {
                 Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
@@ -108,75 +94,100 @@ app.post('/webhook/order', async (req, res) => {
               },
             }
           );
-          product = createProduct.data;
-          console.log('✅ Товар создан:', product.name);
+          if (findProduct.data.rows && findProduct.data.rows.length > 0) {
+            product = findProduct.data.rows[0];
+            console.log('✅ Товар найден:', product.name);
+          } else {
+            console.log('➕ Товар не найден, создаю новый...');
+            const createProduct = await axios.post(
+              `${MOYSKLAD_API}/entity/product`,
+              {
+                name: p.name,
+                code: p.sku || undefined,
+                salePrices: [{ value: Number(p.price) * 100, currency: { meta: { href: `${MOYSKLAD_API}/entity/currency/00000000-0000-0000-0000-000000000000`, type: 'currency', mediaType: 'application/json' } } }],
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json;charset=utf-8',
+                },
+              }
+            );
+            product = createProduct.data;
+            console.log('✅ Товар создан:', product.name);
+          }
+        } catch (e) {
+          console.error('❌ Ошибка при работе с товаром:', e.response?.data || e.message);
+          return res.status(200).json({ status: 'error', error: 'product', details: e.response?.data });
         }
-      } catch (e) {
-        console.error('❌ Ошибка при работе с товаром:', e.response?.data || e.message);
-        return res.status(500).json({ status: 'error', error: 'product' });
+        positions.push({
+          quantity: Number(p.quantity) || 1,
+          price: Number(p.price) * 100,
+          assortment: { meta: product.meta },
+        });
       }
-      positions.push({
-        quantity: Number(p.quantity) || 1,
-        price: Number(p.price) * 100,
-        assortment: { meta: product.meta },
-      });
     }
-  }
 
-  // 3. Получаем организацию
-  let organization;
-  try {
-    console.log('🔎 Получаю организацию из МойСклад...');
-    const orgResp = await axios.get(
-      `${MOYSKLAD_API}/entity/organization`,
-      {
-        headers: {
-          Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json;charset=utf-8',
-        },
+    // 3. Получаем организацию
+    let organization;
+    try {
+      console.log('🔎 Получаю организацию из МойСклад...');
+      const orgResp = await axios.get(
+        `${MOYSKLAD_API}/entity/organization`,
+        {
+          headers: {
+            Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json;charset=utf-8',
+          },
+        }
+      );
+      if (orgResp.data.rows && orgResp.data.rows.length > 0) {
+        console.log('Список организаций:', orgResp.data.rows.map(o => ({ name: o.name, id: o.id, href: o.meta.href })));
+        organization = orgResp.data.rows[0];
+        console.log('✅ Организация найдена:', organization.name);
+      } else {
+        console.error('❌ Не найдено ни одной организации в МойСклад!');
+        return res.status(200).json({ status: 'error', error: 'organization' });
       }
-    );
-    if (orgResp.data.rows && orgResp.data.rows.length > 0) {
-      console.log('Список организаций:', orgResp.data.rows.map(o => ({ name: o.name, id: o.id, href: o.meta.href })));
-      organization = orgResp.data.rows[0];
-      console.log('✅ Организация найдена:', organization.name);
-    } else {
-      console.error('❌ Не найдено ни одной организации в МойСклад!');
-      return res.status(500).json({ status: 'error', error: 'organization' });
+    } catch (e) {
+      console.error('❌ Ошибка при получении организации:', e.response?.data || e.message);
+      return res.status(200).json({ status: 'error', error: 'organization', details: e.response?.data });
     }
-  } catch (e) {
-    console.error('❌ Ошибка при получении организации:', e.response?.data || e.message);
-    return res.status(500).json({ status: 'error', error: 'organization' });
-  }
 
-  // 4. Создаем заказ покупателя
-  try {
-    console.log('📝 Создаю заказ покупателя в МойСклад...');
-    await axios.post(
-      `${MOYSKLAD_API}/entity/customerorder`,
-      {
+    // 4. Создаем заказ покупателя
+    try {
+      console.log('📝 Создаю заказ покупателя в МойСклад...');
+      const orderData = {
         organization: { meta: organization.meta },
         agent: { meta: counterparty.meta },
         positions,
         description: `Заказ с лендинга. Город: ${order['Город'] || ''}, Адрес: ${order['Улица_дом_квартира'] || ''}`,
         deliveryPlannedMoment: getMoyskladDate(),
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json;charset=utf-8',
-        },
-      }
-    );
-    console.log('✅ Заказ успешно создан в МойСклад!');
+      };
+      console.log('Данные для создания заказа:', orderData);
+      await axios.post(
+        `${MOYSKLAD_API}/entity/customerorder`,
+        orderData,
+        {
+          headers: {
+            Authorization: `Bearer ${MOYSKLAD_TOKEN}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json;charset=utf-8',
+          },
+        }
+      );
+      console.log('✅ Заказ успешно создан в МойСклад!');
+      res.status(200).json({ status: 'ok' });
+    } catch (e) {
+      console.error('❌ Ошибка при создании заказа:', e.response?.data || e.message);
+      return res.status(200).json({ status: 'error', error: 'order', details: e.response?.data });
+    }
   } catch (e) {
-    console.error('❌ Ошибка при создании заказа:', e.response?.data || e.message);
-    return res.status(500).json({ status: 'error', error: 'order' });
+    console.error('❌ Необработанная ошибка:', e);
+    return res.status(200).json({ status: 'error', error: 'unexpected', details: e.message });
   }
-
-  res.status(200).json({ status: 'ok' });
 });
 
 app.post('/tilda-debug', (req, res) => {
